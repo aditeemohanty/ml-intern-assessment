@@ -5,38 +5,83 @@ class TrigramModel:
         """
         Initializes the TrigramModel.
         """
-        # TODO: Initialize any data structures you need to store the n-gram counts.
-       
-        pass
+        self.counts = {}
+        self.vocab = set()
+        self.START = "<s>"
+        self.END = "</s>"
+        self.UNK = "<unk>"
+        self.context_totals = {}
 
     def fit(self, text):
-        """
-        Trains the trigram model on the given text.
+        if not isinstance(text, str):
+            raise ValueError("text must be a string")
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        if not lines:
+            lines = [text.strip()]
 
-        Args:
-            text (str): The text to train the model on.
-        """
-        # TODO: Implement the training logic.
-        # This will involve:
-        # 1. Cleaning the text (e.g., converting to lowercase, removing punctuation).
-        # 2. Tokenizing the text into words.
-        # 3. Padding the text with start and end tokens.
-        # 4. Counting the trigrams.
-        pass
+        for line in lines:
+            tokens = line.lower().split()
+            if not tokens:
+                continue
+            for t in tokens:
+                self.vocab.add(t)
+            padded = [self.START, self.START] + tokens + [self.END]
+            for i in range(len(padded) - 2):
+                w1, w2, w3 = padded[i], padded[i+1], padded[i+2]
+                ctx = (w1, w2)
+                self.counts.setdefault(ctx, {})
+                self.counts[ctx][w3] = self.counts[ctx].get(w3, 0) + 1
+
+        self.context_totals = {ctx: sum(targets.values()) for ctx, targets in self.counts.items()}
 
     def generate(self, max_length=50):
-        """
-        Generates new text using the trained trigram model.
+        if not self.counts:
+            return ""
 
-        Args:
-            max_length (int): The maximum length of the generated text.
+        generated = []
+        w1, w2 = self.START, self.START
 
-        Returns:
-            str: The generated text.
-        """
-        # TODO: Implement the generation logic.
-        # This will involve:
-        # 1. Starting with the start tokens.
-        # 2. Probabilistically choosing the next word based on the current context.
-        # 3. Repeating until the end token is generated or the maximum length is reached.
-        pass
+        for _ in range(max_length):
+            ctx = (w1, w2)
+            choices = self.counts.get(ctx)
+            if not choices:
+                agg = {}
+                for (a, b), targets in self.counts.items():
+                    if b == w2:
+                        for t, c in targets.items():
+                            agg[t] = agg.get(t, 0) + c
+                if agg:
+                    choices = agg
+                else:
+                    top = None
+                    top_count = 0
+                    for targets in self.counts.values():
+                        for t, c in targets.items():
+                            if c > top_count:
+                                top_count = c
+                                top = t
+                    next_word = top or self.END
+                    if next_word == self.END:
+                        break
+                    generated.append(next_word)
+                    w1, w2 = w2, next_word
+                    continue
+
+            words = list(choices.keys())
+            counts = [choices[w] for w in words]
+            total = sum(counts)
+            r = random.random() * total
+            cum = 0.0
+            next_word = words[-1]
+            for w, c in zip(words, counts):
+                cum += c
+                if r <= cum:
+                    next_word = w
+                    break
+
+            if next_word == self.END:
+                break
+            generated.append(next_word)
+            w1, w2 = w2, next_word
+
+        return " ".join(generated)
